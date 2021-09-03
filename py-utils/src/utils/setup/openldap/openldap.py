@@ -91,7 +91,11 @@ class Openldap:
                     PkgV().validate('rpms', rpms)
                 services = Conf.get(phase, f'{phase}>services')
                 if services:
-                    ServiceV().validate('isrunning', services)
+                    for service in services:
+                        pid = os.popen('pidof '+service).read()
+                        if pid is None:
+                            Log.debug('Validation failed for service %s in %s phase' % (service ,phase))
+                            raise Exception('Validation failed for service %s in %s phase' % (service ,phase))
                 files = Conf.get(phase, f'{phase}>files')
                 if files:
                     PathV().validate('exists', files)

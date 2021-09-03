@@ -43,7 +43,10 @@ class CleanupCmd(SetupCmd):
             self.delete_replication_config()
             self.delete_log_files()
             BaseConfig.cleanup(True)
-            os.system('systemctl restart slapd')
+            # restart slapd
+            os.system('kill -15 $(pidof slapd)')
+            os.system('/usr/sbin/slapd -u ldap -h \'ldapi:/// ldap:///\'')
+
         except Exception as e:
             raise OpenldapPROVError(f'exception: {e}\n')
 

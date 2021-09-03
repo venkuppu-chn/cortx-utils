@@ -114,12 +114,13 @@ class BaseConfig:
         cmd = 'slappasswd -s ' + str(ROOTDNPASSWORD)
         pwd = os.popen(cmd).read()
         pwd.replace('/','\/')
-        #restart slapd post cleanup
-        os.system('systemctl restart slapd')
         dn = 'olcDatabase={0}config,cn=config'
         BaseConfig.modify_attribute(dn, 'olcRootDN', (adminuser+'cn=config'))
         BaseConfig.modify_attribute(dn, 'olcRootPW', pwd)
         BaseConfig.modify_attribute(dn, 'olcAccess', '{0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth" write by self write by * read')
+        #restart slapd post cleanup
+        os.system('kill -15 $(pidof slapd)')
+        os.system('/usr/sbin/slapd -u ldap -h \'ldapi:/// ldap:///\'')
         dn = 'olcDatabase={2}mdb,cn=config'
         BaseConfig.modify_attribute(dn, 'olcSuffix', config_values.get('base_dn'))
         BaseConfig.modify_attribute(dn, 'olcRootDN', config_values.get('bind_base_dn'))
