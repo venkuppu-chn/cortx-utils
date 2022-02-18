@@ -1,4 +1,0 @@
-server_node:
-  TMPL_MACHINE_ID:
-    hostname: TMPL_HOSTNAME
-    name: TMPL_NAME

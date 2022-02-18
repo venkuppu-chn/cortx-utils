@@ -17,111 +17,85 @@
 
 
 import os
-import json
+import yaml
 import time
+import string
+import random
 import unittest
 from cortx.utils.conf_store import Conf
 from cortx.utils.support_framework import Bundle
 from cortx.utils.support_framework import SupportBundle
 
+target_path = '/var/cortx/support_bundle'
+
+def generate_bundle_id():
+    """Generate Unique Bundle ID."""
+    alphabet = string.ascii_lowercase + string.digits
+    return f"SB{''.join(random.choices(alphabet, k=5))}"
+
 
 class TestSupportBundle(unittest.TestCase):
-
     """Test Support Bundle related functionality."""
-    from cortx.utils.log import Log
-    Log.init('support_bundle', '/var/log/cortx/utils/suppoort/', level='DEBUG', \
-        backup_count=5, file_size_in_mb=5)
-    sb_description = "Test support bundle generation"
 
-    def test_001generate(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['provisioner'])
+    _cluster_conf_path = ''
+    @classmethod
+    def setUpClass(cls, cluster_conf_path: str = 'yaml:///etc/cortx/cluster.conf'):
+        """Test Setup class."""
+        from cortx.utils.log import Log
+        Log.init('support_bundle', '/var/log/cortx/utils/suppoort/', \
+            level='DEBUG', backup_count=5, file_size_in_mb=5, \
+            syslog_server='localhost', syslog_port=514)
+        cls.sb_description = "Test support bundle generation"
+        if TestSupportBundle._cluster_conf_path:
+            cls.cluster_conf_path = TestSupportBundle._cluster_conf_path
+        else:
+            cls.cluster_conf_path = cluster_conf_path
+
+    def test_001_verify_SB_generate_single_comp(self):
+        """Validate SB generate."""
+        bundle_obj = SupportBundle.generate(
+            comment=TestSupportBundle.sb_description,
+            target_path=target_path,
+            bundle_id=generate_bundle_id(),
+            config_url=TestSupportBundle.cluster_conf_path)
         self.assertIsNotNone(bundle_obj)
         self.assertIsInstance(bundle_obj, Bundle)
         self.assertIsInstance(bundle_obj.bundle_id, str)
         self.assertIsInstance(bundle_obj.bundle_path, str)
         self.assertNotEqual(bundle_obj.bundle_id, '')
         self.assertNotEqual(bundle_obj.bundle_path, '')
-        self.assertEqual(bundle_obj.comment, self.sb_description)
-        self.assertEqual(os.path.exists(f'{bundle_obj.bundle_path}'), True)
+        self.assertEqual(bundle_obj.comment, TestSupportBundle.sb_description)
 
-    def test_002generated_path(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['csm'])
-        time.sleep(10)
-        Conf.load('cluster_conf', 'json:///etc/cortx/cluster.conf')
-        node_name = Conf.get('cluster_conf', 'cluster>srvnode-1')
-        tar_file_name = f"{bundle_obj.bundle_id}_{node_name}.tar.gz"
-        sb_file_path = f'{bundle_obj.bundle_path}/{bundle_obj.bundle_id}/{node_name}/{tar_file_name}'
-        self.assertEqual(os.path.exists(sb_file_path), True)
-
-    def test_003status(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['csm'])
+    def test_002_verify_cortx_SB_get_status_success(self):
+        """Validate SB get_status success."""
+        bundle_obj = SupportBundle.generate(
+            comment=TestSupportBundle.sb_description,
+            target_path=target_path,
+            bundle_id=generate_bundle_id(),
+            config_url=TestSupportBundle.cluster_conf_path)
         status = SupportBundle.get_status(bundle_id=bundle_obj.bundle_id)
+        self.assertIsNotNone(status)
         self.assertIsInstance(status, str)
-        self.assertIsInstance(json.loads(status), dict)
+        self.assertIn("Successfully generated SB", status)
 
-    def test_004status(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['csm'])
-        time.sleep(5)
-        status = SupportBundle.get_status(bundle_id=bundle_obj.bundle_id)
-        self.assertIsNotNone(status)
-        status = json.loads(status)
-        if status['status']:
-            self.assertEqual(status['status'][0]['result'], 'Success')
+    def test_003_verify_SB_generated_path(self):
+        """Validate SB generated path."""
+        bundle_obj = SupportBundle.generate(
+            comment=TestSupportBundle.sb_description,
+            target_path=target_path,
+            bundle_id=generate_bundle_id(),
+            config_url=TestSupportBundle.cluster_conf_path)
+        bundle_path = bundle_obj.bundle_path.strip()
+        tar_file_name = f"{bundle_path}/{bundle_obj.bundle_id}_{Conf.machine_id}.tar.gz"
+        self.assertEqual(os.path.exists(tar_file_name), True)
 
-    def test_005status(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['wrong'])
-        status = SupportBundle.get_status(bundle_id=bundle_obj.bundle_id)
-        self.assertIsNotNone(status)
-        status = json.loads(status)
-        self.assertEqual(status['status'], [])
-
-    def test_006status(self):
-        # TODO - Once all components are working this test case can be removed
-        # Getting error because of some components dont have support.yaml and
-        # empty support.yaml
-        bundle_obj = SupportBundle.generate(comment=self.sb_description)
-        status = SupportBundle.get_status(bundle_id=bundle_obj.bundle_id)
-        status = json.loads(status)
-        if status['status']:
-            self.assertEqual(status['status'][0]['result'], 'Error')
-
-    def test_007_wrong_comp(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['util'])
-        status = SupportBundle.get_status(bundle_id=bundle_obj.bundle_id)
-        status = json.loads(status)
-        if status['status']:
-            self.assertEqual(status['status'][0]['result'], 'Error')
-
-    def test_008_wrong_comp(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['util;csmm'])
-        status = SupportBundle.get_status(bundle_id=bundle_obj.bundle_id)
-        status = json.loads(status)
-        if status['status']:
-            self.assertEqual(status['status'][0]['result'], 'Error')
-
-    def test_009_wrong_comp(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['util;csm'])
-        time.sleep(10)
-        status = SupportBundle.get_status(bundle_id=bundle_obj.bundle_id)
-        status = json.loads(status)
-        if status['status']:
-            self.assertEqual(status['status'][0]['result'], 'Error')
-
-    def test_007_dir_remove(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['csm'])
-        time.sleep(5)
-        Conf.load('cluster_conf', 'json:///etc/cortx/cluster.conf', skip_reload=True)
-        node_name = Conf.get('cluster_conf', 'cluster>srvnode-1')
-        self.assertFalse(os.path.exists(f'{bundle_obj.bundle_path}/{bundle_obj.bundle_id}/{node_name}/csm'))
-
-    def test_008_dir_remove(self):
-        bundle_obj = SupportBundle.generate(comment=self.sb_description, components=['csm', 'provisioner'])
-        time.sleep(15)
-        Conf.load('cluster_conf', 'json:///etc/cortx/cluster.conf', skip_reload=True)
-        node_name = Conf.get('cluster_conf', 'cluster>srvnode-1')
-        self.assertFalse(os.path.exists(f'{bundle_obj.bundle_path}/{bundle_obj.bundle_id}/{node_name}/csm'))
-        self.assertFalse(os.path.exists(f'{bundle_obj.bundle_path}/{bundle_obj.bundle_id}/{node_name}/provisioner'))
+    @classmethod
+    def tearDownClass(cls):
+        """Test teardown class."""
 
 
 if __name__ == '__main__':
+    import sys
+    if len(sys.argv) >= 2:
+        TestSupportBundle._cluster_conf_path  = sys.argv.pop()
     unittest.main()

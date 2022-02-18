@@ -131,6 +131,14 @@ class ConfCli:
             Conf.save(ConfCli._index)
 
     @staticmethod
+    def copy(args):
+        """Copy One or more Keys to the target config url"""
+        key_list = None if len(args.args) < 1 else args.args[0].split(';')
+        target_index = 'target'
+        ConfCli.load(args.target_url, target_index)
+        Conf.copy(ConfCli._index, target_index, key_list)
+
+    @staticmethod
     def get_keys(args, index: str = None) -> list:
         """ Returns list of keys present in store """
         key_index = 'true' if args.key_index == None else args.key_index.lower().strip()
@@ -140,6 +148,12 @@ class ConfCli:
         if index is None:
             index = ConfCli._index
         return Conf.get_keys(index, key_index=key_index)
+
+    @staticmethod
+    def search(args):
+        """Returns list of keys matching to the criteria."""
+        return Conf.search(ConfCli._index, args.parent_key, args.search_key,
+            args.search_val)
 
 
 class GetCmd:
@@ -194,6 +208,21 @@ class SetCmd:
         s_parser.add_argument('args', nargs='+', default=[], help='args')
 
 
+class CopyCmd:
+    """ Copy Cmd Structure """
+
+    @staticmethod
+    def add_args(sub_parser) -> None:
+        s_parser = sub_parser.add_parser('copy', help=
+            "Copy Keys or whole config to the target config url.\n"
+            "Example command(s):\n"
+            "# conf json:///tmp/csm.conf copy json:///tmp/csm1.conf\n"
+            "# conf json:///tmp/csm.conf copy json:///tmp/csm1.conf 'k1>k2;k3'\n\n")
+        s_parser.set_defaults(func=ConfCli.copy)
+        s_parser.add_argument('target_url', help='target url for copy')
+        s_parser.add_argument('args', nargs='*', default=[], help='args')
+
+
 class DeleteCmd:
     """ Delete Cmd Structure """
 
@@ -208,6 +237,7 @@ class DeleteCmd:
             "# conf json:///tmp/csm.conf delete 'k1>k2;k3'\n\n")
         s_parser.set_defaults(func=ConfCli.delete)
         s_parser.add_argument('args', nargs='+', default=[], help='args')
+
 
 class GetsKeysCmd:
     """ Get keys command structure """
@@ -246,6 +276,21 @@ class MergeCmd:
         s_parser.add_argument('-k', dest='keys',  nargs='+', default=[], \
             help='Only specified keys will be merged.')
 
+
+class SearchCmd:
+    """Search for a given key and value in conf store."""
+
+    @staticmethod
+    def add_args(sub_parser) -> None:
+       s_parser = sub_parser.add_parser('search', help=
+            "Searches for the given key and value under a parent key.\n"
+            "Example Command:\n"
+            "# conf yaml:///tmp/test.conf search 'root' 'name' 'storage_node'\n\n")
+
+       s_parser.add_argument('parent_key', help="parent key")
+       s_parser.add_argument('search_key', help="search key")
+       s_parser.add_argument('search_val', help="search val")
+       s_parser.set_defaults(func=ConfCli.search)
 
 def main():
     # Setup Parser

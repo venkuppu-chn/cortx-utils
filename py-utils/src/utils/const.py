@@ -15,6 +15,9 @@
 # For any questions about this software or licensing,
 # please email opensource@seagate.com or cortx-questions@seagate.com.
 
+CLUSTER_CONF = 'yaml:///etc/cortx/cluster.conf'
+CLUSTER_CONF_LOG_KEY = 'cortx>common>storage>log'
+DEFAULT_INSTALL_PATH = '/opt/seagate'
 CORTX_HA_INSTALL_PATH = "/etc/cortx/ha/"
 RULES_FILE_PATH = "rules_engine_schema.json"
 CONF_FILE_PATH = "decision_monitor_conf.json"
@@ -57,4 +60,3 @@ SERIAL_NO_FILE_PATH = "/opt/seagate/lr-serial-number"
 ITEMS_SEPARATOR = ", "
 STORAGE_ENCLOSURE = "storage_enclosure"
 CLUSTER_ID = "cluster_id"
-CORTX_CONF_FILE = "/etc/cortx/cortx.conf"

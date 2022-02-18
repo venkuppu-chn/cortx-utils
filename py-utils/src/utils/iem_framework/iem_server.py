@@ -17,17 +17,20 @@
 
 import json
 from aiohttp import web
-from cortx.utils.utils_server import RestServer
+from cortx.utils.utils_server import MessageServer
 from cortx.utils.iem_framework import EventMessage
 from cortx.utils.utils_server.error import RestServerError
 from cortx.utils.iem_framework.error import EventMessageError
 from cortx.utils.log import Log
+from cortx.utils.conf_store import Conf, MappedConf
 
 routes = web.RouteTableDef()
 
 
-class IemRequestHandler(RestServer):
+class IemRequestHandler(MessageServer):
     """ Rest interface of Iem """
+    cluster_id = None
+    message_server_endpoints = None
 
     @staticmethod
     async def send(request):
@@ -36,7 +39,9 @@ class IemRequestHandler(RestServer):
 
             component = payload['component']
             source = payload['source']
-            EventMessage.init(component=component, source=source)
+            EventMessage.init(component=component, source=source,\
+                cluster_id=IemRequestHandler.cluster_id,\
+                message_server_endpoints=IemRequestHandler.message_server_endpoints)
 
             del payload['component']
             del payload['source']
@@ -75,7 +80,9 @@ class IemRequestHandler(RestServer):
             f"{request.rel_url.query['component']}")
         try:
             component = request.rel_url.query['component']
-            EventMessage.subscribe(component=component)
+            EventMessage.subscribe(component=component,\
+                message_server_endpoints=\
+                IemRequestHandler.message_server_endpoints)
             alert = EventMessage.receive()
         except EventMessageError as e:
             status_code = e.rc

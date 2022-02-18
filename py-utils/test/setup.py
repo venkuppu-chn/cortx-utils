@@ -13,22 +13,23 @@
 # For any questions about this software or licensing,
 # please email opensource@seagate.com or cortx-questions@seagate.com.
 
-from setuptools import setup
+import os
 import sys
+from setuptools import setup
 
 
+if not os.path.isfile("./VERSION"):
+    print("error: VERSION file not found!", file=sys.stderr)
+    sys.exit(1)
 
-# Get the version string from command line
-version = "1.0.0"
-for arg in sys.argv:
-    if arg.startswith("--version") or arg.startswith("-v"):
-        version = arg.split("=")[1]
-        sys.argv.remove(arg)
+# Fetch version
+with open("VERSION") as v_file:
+    utils_version = v_file.read().strip()
 
 
 setup(
     name="cortx-py-utils-test",
-    version=version,
+    version=utils_version,
     url="https://github.com/Seagate/cortx-utils/py-utils/test",
     license="Seagate",
     author="Seagate Foundation Team",
@@ -43,29 +44,35 @@ setup(
         "cortx.utils.test.kv_store",
         "cortx.utils.test.message_bus",
         "cortx.utils.test.conf_store",
-        "cortx.utils.test.schema",
+        "cortx.utils.test.service_handler",
+        "cortx.utils.test.ssh_connection",
+        "cortx.utils.test.ha_dm",
         "cortx.utils.test.cli_framework",
         "cortx.utils.test.iem_framework",
-        "cortx.utils.test.shared_storage",
-        "cortx.utils.test.consul",
+        "cortx.utils.test.consul_service",
         "cortx.utils.test.discovery",
         "cortx.utils.test.discovery.solution",
         "cortx.utils.test.discovery.solution.lr2",
         "cortx.utils.test.discovery.solution.lr2.server",
         "cortx.utils.test.discovery.solution.lr2.storage",
-        "cortx.utils.test.elasticsearch"
+        "cortx.utils.test.elastic_search",
+        "cortx.utils.test.support_bundle",
+        "cortx.utils.test.cmd_framework",
     ],
     package_data={
         "": [
-            "*.json",
+            "VERSION",
             "plans/*.pln",
-            "schema/*.json",
+            "ha_dm/*.json",
+            "ha_dm/test_schema/*.json",
             "kv_store/*.json",
             "conf_store/*.json",
+            "conf_store/*.yaml",
             "message_bus/*.conf",
-            "cli_framework/test_data/*.json",
+            "cli_framework/test_data/*",
             "iem_framework/*.json",
             "discovery/solution/lr2/*.json",
+            "support_bundle/*.yaml",
         ]
     },
     entry_points={

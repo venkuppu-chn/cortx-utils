@@ -17,16 +17,17 @@
 
 import json
 from aiohttp import web
-from cortx.utils.utils_server import RestServer
+
+from cortx.utils.utils_server import MessageServer
 from cortx.utils.message_bus.error import MessageBusError
 from cortx.utils.utils_server.error import RestServerError
-from cortx.utils.message_bus import MessageConsumer, MessageProducer
+from cortx.utils.message_bus import MessageConsumer, MessageProducer, MessageBus
 from cortx.utils.log import Log
 
 routes = web.RouteTableDef()
 
 
-class MessageBusRequestHandler(RestServer):
+class MessageBusRequestHandler(MessageServer):
     """ Rest interface of message bus """
 
     @staticmethod
@@ -39,7 +40,6 @@ class MessageBusRequestHandler(RestServer):
             messages = payload['messages']
             producer = MessageProducer(producer_id='rest_producer', \
                 message_type=message_type, method='sync')
-
             producer.send(messages)
         except MessageBusError as e:
             status_code = e.rc
@@ -80,7 +80,6 @@ class MessageBusRequestHandler(RestServer):
             consumer = MessageConsumer(consumer_id='rest_consumer', \
                 consumer_group=consumer_group, message_types=message_types, \
                 auto_ack=True, offset='latest')
-
             message = consumer.receive()
         except MessageBusError as e:
             status_code = e.rc

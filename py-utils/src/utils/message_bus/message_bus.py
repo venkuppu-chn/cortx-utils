@@ -15,100 +15,120 @@
 # For any questions about this software or licensing,
 # please email opensource@seagate.com or cortx-questions@seagate.com.
 
-import os
-import stat
 import errno
+from cortx.utils import errors
 from cortx.utils.log import Log
-from cortx.utils.message_bus.message_broker import MessageBrokerFactory
-from cortx.utils.message_bus.error import MessageBusError
+from cortx.template import Singleton
 from cortx.utils.conf_store import Conf
 from cortx.utils.conf_store.error import ConfError
-from cortx.template import Singleton
+from cortx.utils.message_bus.error import MessageBusError
+from cortx.utils.message_bus.message_broker import MessageBrokerFactory
 
 
 class MessageBus(metaclass=Singleton):
     """ Message Bus Framework over various types of Message Brokers """
+    _broker = None
+    _broker_type = 'kafka'
+    _receive_timeout = 2
+    _socket_timeout = 15000
+    _send_timeout = 5000
 
-    conf_file = 'json:///etc/cortx/message_bus.conf'
+    @staticmethod
+    def init(message_server_endpoints: list, **message_server_params_kwargs: dict):
+        """Initialize MessageBus and load its broker."""
+        utils_index = 'utils_ind'
+        Conf.load(utils_index, 'dict:{}', skip_reload=True)
+        message_server_keys = message_server_params_kwargs.keys()
 
-    def __init__(self):
-        """ Initialize a MessageBus and load its configurations """
-        Conf.load('config_file', 'json:///etc/cortx/cortx.conf',
-            skip_reload=True)
+        endpoints = MessageBrokerFactory.get_server_list(message_server_endpoints)
+        broker_type = message_server_params_kwargs['broker_type'] if \
+            'broker_type' in message_server_keys else MessageBus._broker_type
+        receive_timeout = message_server_params_kwargs['receive_timeout'] if \
+            'receive_timeout' in message_server_keys else MessageBus._receive_timeout
+        socket_timeout = message_server_params_kwargs['socket_timeout'] if \
+            'socket_timeout' in message_server_keys else MessageBus._socket_timeout
+        send_timeout = message_server_params_kwargs['send_timeout'] if \
+            'send_timeout' in message_server_keys else MessageBus._send_timeout
 
-        # if Log.logger is already initialized by some parent process
-        # the same file will be used to log all the messagebus related
-        # logs, else standard message_bus.log will be used.
-        if not Log.logger:
-            log_level = Conf.get('config_file', 'utils>log_level', 'INFO')
-            Log.init('message_bus', '/var/log/cortx/utils/message_bus', \
-                level=log_level, backup_count=5, file_size_in_mb=5)
+        Conf.set(utils_index, 'message_broker>type', broker_type)
+        Conf.set(utils_index, 'message_broker>cluster', endpoints)
+        Conf.set(utils_index, 'message_broker>message_bus>receive_timeout', \
+            receive_timeout)
+        Conf.set(utils_index, 'message_broker>message_bus>socket_timeout', \
+            socket_timeout)
+        Conf.set(utils_index, 'message_broker>message_bus>send_timeout', \
+            send_timeout)
+        Conf.save(utils_index)
 
-        try:
-            Conf.load('message_bus', self.conf_file, skip_reload=True)
-            self._broker_conf = Conf.get('message_bus', 'message_broker')
-            broker_type = self._broker_conf['type']
-            Log.info(f"MessageBus initialized as {broker_type}")
-        except ConfError as e:
-            Log.error(f"MessageBusError: {e.rc} Error while parsing" \
-                f" configuration file {self.conf_file}. {e}.")
-            raise MessageBusError(e.rc, "Error while parsing " + \
-                "configuration file %s. %s.", self.conf_file, e)
-        except Exception as e:
-            Log.error(f"MessageBusError: {e.rc} Error while parsing" \
-                f" configuration file {self.conf_file}. {e}.")
-            raise MessageBusError(errno.ENOENT, "Error while parsing " + \
-                "configuration file %s. %s.", self.conf_file, e)
+        broker_conf = Conf.get(utils_index, 'message_broker')
+        if broker_conf is None:
+            Log.error(f"MessageBusError: {errno.EINVAL} Invalid broker " \
+                f"information {broker_conf}.")
+            raise MessageBusError(errno.EINVAL, "Invalid broker " + \
+                "information %s. ", broker_conf)
 
-        self._broker = MessageBrokerFactory.get_instance(broker_type, \
-            self._broker_conf)
+        MessageBus._broker = MessageBrokerFactory.get_instance(broker_type, \
+            broker_conf)
+        Log.info(f"MessageBus initialized as {broker_type}")
 
-    def init_client(self, client_type: str, **client_conf: dict):
-        """ To create producer/consumer client based on the configurations """
-        self._broker.init_client(client_type, **client_conf)
+    @staticmethod
+    def init_client(client_type: str, **client_conf: dict):
+        """To create producer/consumer client based on the configurations."""
+        if MessageBus._broker is None:
+            raise MessageBusError(errors.ERR_NOT_INITIALIZED ,"MessageBroker " \
+                "is not initialized %s. ", MessageBus._broker)
+        MessageBus._broker.init_client(client_type, **client_conf)
 
-    def list_message_types(self, client_id: str) -> list:
+    @staticmethod
+    def list_message_types(client_id: str) -> list:
         """
         Returns list of available message types from the configured message
         broker
         """
-        return self._broker.list_message_types(client_id)
+        return MessageBus._broker.list_message_types(client_id)
 
-    def register_message_type(self, client_id: str, message_types: list, \
+    @staticmethod
+    def register_message_type(client_id: str, message_types: list, \
         partitions: int):
-        """ Registers list of message types in the configured message broker """
-        self._broker.register_message_type(client_id, message_types, \
+        """Registers list of message types in the configured message broker."""
+        MessageBus._broker.register_message_type(client_id, message_types, \
             partitions)
 
-    def deregister_message_type(self, client_id: str, message_types: list):
-        """ Deregisters list of message types in the configured message broker """
-        self._broker.deregister_message_type(client_id, message_types)
+    @staticmethod
+    def deregister_message_type(client_id: str, message_types: list):
+        """Deregisters list of message types in the configured message broker."""
+        MessageBus._broker.deregister_message_type(client_id, message_types)
 
-    def add_concurrency(self, client_id: str, message_type: str, \
+    @staticmethod
+    def add_concurrency(client_id: str, message_type: str, \
         concurrency_count: int):
-        """ To achieve concurrency among consumers """
-        self._broker.add_concurrency(client_id, message_type, concurrency_count)
+        """To achieve concurrency among consumers."""
+        MessageBus._broker.add_concurrency(client_id, message_type, \
+            concurrency_count)
 
-    def send(self, client_id: str, message_type: str, method: str, \
-        messages: list):
-        """ Sends list of messages to the configured message broker """
-        self._broker.send(client_id, message_type, method, messages)
+    @staticmethod
+    def send(client_id: str, message_type: str, method: str, messages: list):
+        """Sends list of messages to the configured message broker."""
+        MessageBus._broker.send(client_id, message_type, method, messages)
 
-    def delete(self, client_id: str, message_type: str):
-        """ Deletes all the messages from the configured message broker """
-        return self._broker.delete(client_id, message_type)
+    @staticmethod
+    def delete(client_id: str, message_type: str):
+        """Deletes all the messages from the configured message broker."""
+        return MessageBus._broker.delete(client_id, message_type)
 
-    def get_unread_count(self, message_type: str, consumer_group: str):
-        """
-        Gets the count of unread messages from the configured message
-        broker
-        """
-        return self._broker.get_unread_count(message_type, consumer_group)
+    @staticmethod
+    def receive(client_id: str, timeout: float = None) -> list:
+        """Receives messages from the configured message broker."""
+        return MessageBus._broker.receive(client_id, timeout)
 
-    def receive(self, client_id: str, timeout: float = None) -> list:
-        """ Receives messages from the configured message broker """
-        return self._broker.receive(client_id, timeout)
+    @staticmethod
+    def ack(client_id: str):
+        """Provides acknowledgement on offset."""
+        MessageBus._broker.ack(client_id)
 
-    def ack(self, client_id: str):
-        """ Provides acknowledgement on offset """
-        self._broker.ack(client_id)
+    @staticmethod
+    def set_message_type_expire(client_id: str, message_type: str,\
+        **kwargs):
+        """Set expiration time for given message type."""
+        return MessageBus._broker.set_message_type_expire(client_id, \
+            message_type, **kwargs)

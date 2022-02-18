@@ -29,6 +29,8 @@ from cortx.utils.validator.v_service import ServiceV
 from cortx.utils.validator.v_path import PathV
 from cortx.utils.process import SimpleProcess
 from cortx.utils.log import Log
+from cortx.utils.conf_store import MappedConf
+from cortx.utils.const import CLUSTER_CONF
 
 class OpenldapPROVError(Exception):
 
@@ -42,7 +44,6 @@ class SetupCmd(object):
   rootdn_passwd = None
   cluster_id = None
   machine_id = None
-  ldap_mdb_folder = "/var/lib/ldap"
   _preqs_conf_file = "openldapsetup_prereqs.json"
   ha_service_map = {}
   sgiam_user_key = 'cluster_config>sgiam_user'
@@ -51,11 +52,8 @@ class SetupCmd(object):
   rootdn_pass_key = 'cluster_config>rootdn_password'
   cluster_id_key = 'cluster_config>cluster_id'
   Log.init('OpenldapProvisioning','/var/log/cortx/utils/openldap',level='DEBUG')
-
-  util_config_file_path = "/etc/cortx/cortx.conf"
-  util_config_file_index = "util_config_file_index"
-  Conf.load(util_config_file_index, f'yaml:///{util_config_file_path}')
-  util_install_path = Conf.get(index= util_config_file_index, key='install_path')
+  cluster_conf = MappedConf(CLUSTER_CONF)
+  util_install_path = cluster_conf.get('install_path')
   openldap_prov_config = path.join(util_install_path, "cortx/utils/conf", "openldap_prov_config.yaml")
   openldap_config_file = path.join(util_install_path, "cortx/utils/conf", "openldap_config.yaml")
   utils_tmp_dir = path.join(util_install_path, "cortx/utils/tmp")

@@ -21,7 +21,7 @@ import inspect
 import traceback
 import logging.handlers
 from functools import wraps
-
+from cortx.utils import errors
 
 class Log:
     CRITICAL = logging.CRITICAL
@@ -34,9 +34,12 @@ class Log:
     logger = None
 
     @staticmethod
-    def init(service_name, log_path, level="INFO", backup_count=10, file_size_in_mb=10, 
-            syslog_server=None, syslog_port=None):
+    def init(service_name, log_path, level="INFO", backup_count=10, file_size_in_mb=10,
+            syslog_server=None, syslog_port=None, console_output=False):
         """ Initialize logging to log to syslog """
+        # TODO: Add handler type argument to init method and let logger to
+        # use default values to ease init method call by caller.
+
         try:
             if log_path and not os.path.exists(log_path): os.makedirs(log_path)
         except OSError as err:
@@ -45,14 +48,17 @@ class Log:
         if file_size_in_mb:
             max_bytes = file_size_in_mb * 1024 * 1024
         Log.audit_logger = Log._get_logger(syslog_server, syslog_port, service_name,
-                        "audit", getattr(Log, level), log_path, backup_count, max_bytes)
+                        "audit", getattr(Log, level), log_path, backup_count, max_bytes,
+                        console_output)
 
         Log.logger = Log._get_logger(syslog_server, syslog_port, service_name,
-                       "system", getattr(Log, level), log_path, backup_count, max_bytes)
+                       "system", getattr(Log, level), log_path, backup_count, max_bytes,
+                       console_output)
 
     @staticmethod
     def _get_logger(syslog_server: str, syslog_port: str, file_name: str, logger_type,
-                        log_level, log_path: str, backup_count: int, max_bytes: int):
+                        log_level, log_path: str, backup_count: int, max_bytes: int,
+                        console_output: bool):
         """
         This Function Creates the Logger for Log Files.
         :param syslog_server: syslog server
@@ -70,56 +76,72 @@ class Log:
             logger_name = f"{file_name}_audit"
             formatter = logging.Formatter(log_format)
         logger = logging.getLogger(logger_name)
+        logger.setLevel(log_level)
         if syslog_server and syslog_port:
             log_handler = logging.handlers.SysLogHandler(address =
                                            (syslog_server, syslog_port))
-            logger.setLevel(log_level)
             log_handler.setFormatter(formatter)
             logger.addHandler(log_handler)
-        else:
+        elif log_path:
             log_file = os.path.join(log_path, f"{file_name}.log")
             file_handler = logging.handlers.RotatingFileHandler(log_file, mode="a",
                                   maxBytes=max_bytes, backupCount=backup_count)
             file_handler.setFormatter(formatter)
-            logger.setLevel(log_level)
             if not logger.hasHandlers():
                 logger.addHandler(file_handler)
-  
+
+        if console_output:
+            # Log message in console
+            sh = logging.StreamHandler()
+            sh.setFormatter(formatter)
+            logger.addHandler(sh)
+
         return logger
 
     @staticmethod
     def debug(msg, *args, **kwargs):
+        if not Log.logger: return
         caller = inspect.stack()[1][3]
         Log.logger.debug(f"[{caller}] {msg}", *args, **kwargs)
 
     @staticmethod
     def info(msg, *args, **kwargs):
+        if not Log.logger: return
         caller = inspect.stack()[1][3]
         Log.logger.info(f"[{caller}] {msg}", *args, **kwargs)
 
     @staticmethod
     def audit(msg, *args, **kwargs):
+        if not Log.audit_Logger:
+            raise errors.UtilsError(errors.ERR_NOT_INITIALIZED, "Audit Logger "\
+                "is not initialised")
         caller = inspect.stack()[1][3]
-        Log.audit_logger.info(f"audit: {msg}", *args, **kwargs)
+        Log.audit_logger.info(f"[{caller}] {msg}", *args, **kwargs)
 
     @staticmethod
     def support_bundle(msg, *args, **kwargs):
+        if not Log.audit_logger:
+            raise errors.UtilsError(errors.ERR_NOT_INITIALIZED, "Audit Logger "\
+                "is not initialised")
         caller = inspect.stack()[1][3]
-        Log.audit_logger.info(f"support_bundle: {msg}", *args, **kwargs)
+        Log.audit_logger.info(f"[{caller}] {msg}", *args, **kwargs)
 
     @staticmethod
     def warn(msg, *args, **kwargs):
+        if not Log.logger: return
         caller = inspect.stack()[1][3]
         Log.logger.warn(f"[{caller}] {msg}", *args, **kwargs)
 
     @staticmethod
     def error(msg, *args, **kwargs):
+        if not Log.logger: return
         caller = inspect.stack()[1][3]
         Log.logger.error(f"[{caller}] {msg}", *args, **kwargs)
 
     @staticmethod
     def critical(msg, *args, **kwargs):
         """ Logs a message with level CRITICAL on this logger. """
+        if Log.logger: return
         caller = inspect.stack()[1][3]
         Log.logger.critical(traceback.format_exc())
         Log.logger.critical(f"[{caller}] {msg}", *args, **kwargs)
@@ -127,6 +149,7 @@ class Log:
     @staticmethod
     def exception(e, *args, **kwargs):
         """ Logs a message with level ERROR on this logger. """
+        if not Log.logger: return
         caller = inspect.stack()[1][3]
         Log.logger.exception(f"[{caller}] [{e.__class__.__name__}] e")
 
@@ -134,9 +157,10 @@ class Log:
     def console(msg, *args, **kwargs):
         """ Logs a message with level ERROR on this logger. """
         caller = inspect.stack()[1][3]
-        Log.logger.debug(f"[{caller}] {msg}", *args, **kwargs)
         print(f"[{caller}] {msg}")
-
+        if not Log.logger:
+            return
+        Log.logger.debug(f"[{caller}] {msg}", *args, **kwargs)
 
     @staticmethod
     def trace_method(level, exclude_args=[], truncate_at=80):

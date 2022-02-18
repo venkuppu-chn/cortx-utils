@@ -25,6 +25,7 @@ from argparse import RawTextHelpFormatter
 from cortx.utils.schema import Format
 from cortx.utils.iem_framework.error import EventMessageError
 from cortx.utils.iem_framework.event_message import EventMessage
+from cortx.utils.conf_store import Conf
 
 
 class IemCli:
@@ -68,6 +69,7 @@ class IemCli:
                 send_args['event_id'] = args.contents
                 with open(args.file, 'r') as fd:
                     send_args['message'] = ''.join(fd.readlines())
+            send_args['cluster_conf'] = args.config
         except ValueError:
             raise EventMessageError(errno.EINVAL, "Invalid send arguments!")
 
@@ -83,18 +85,30 @@ class IemCli:
         return send_args
 
     @staticmethod
-    def subscribe(component: str, **filters):
-        EventMessage.subscribe(component, **filters)
+    def _get_cluster_data(config_path):
+        Conf.load('cluster_conf', config_path)
+        message_bus_backend = Conf.get('cluster_conf',\
+            'cortx>utils>message_bus_backend')
+        message_server_endpoints = Conf.get('cluster_conf',\
+            f'cortx>external>{message_bus_backend}>endpoints')
+        cluster_id = Conf.get('cluster_conf','cluster>id')
+        return message_server_endpoints, cluster_id
+
+    @staticmethod
+    def subscribe(component: str, message_server_endpoints, **filters):
+        EventMessage.subscribe(component, message_server_endpoints, **filters)
 
     @staticmethod
     def send(args_parse):
         """ send IE message """
 
         send_args = IemCli._parse_send_args(args_parse)
-
+        message_server_endpoints, cluster_id = IemCli._get_cluster_data(send_args['cluster_conf'])
         EventMessage.init(
             component=send_args['component'],
-            source=send_args['source_type']
+            source=send_args['source_type'],
+            cluster_id=cluster_id,
+            message_server_endpoints=message_server_endpoints
         )
         EventMessage.send(
             module=send_args['module'],
@@ -115,8 +129,9 @@ class IemCli:
         Receives IEM Message and returns to the caller, If file[-f] is passed,
         writes message to file and returns blank string to caller
         """
-
-        IemCli.subscribe(component=args.source)
+        endpoints, _ = IemCli._get_cluster_data(args.config)
+        IemCli.subscribe(component=args.source,\
+            message_server_endpoints=endpoints)
         rec_data = ''
         event = ' '
         while event:
@@ -154,6 +169,8 @@ class SendCmd:
         req_s_parser.add_argument('-c', '--contents', help='event_id:message')
         req_s_parser.add_argument('-l', '--location', \
             help='cluster_id:site_id:node_id:rack_id:host')
+        req_s_parser.add_argument('--config', dest='config',\
+            help='ConfStore URL for the cluster.conf')
 
 
 class ReceiveCmd:
@@ -172,6 +189,8 @@ class ReceiveCmd:
         req_r_parser.add_argument('-s', '--source', help='component_id')
         req_r_parser.add_argument('-i', '--info', help='source_type',
                                   choices=['S', 'H', 'F', 'O'])
+        req_r_parser.add_argument('--config', dest='config',\
+            help='ConfStore URL for the cluster.conf')
 
 
 def main():

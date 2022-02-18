@@ -21,7 +21,7 @@ import inspect
 import argparse
 import traceback
 
-from cortx.setup import Utils
+from cortx.setup.utils import Utils
 from cortx.utils.log import Log
 from cortx.setup.utils import SetupError
 
@@ -35,6 +35,7 @@ class Cmd:
             raise SetupError(errno.EPERM, "Permission denied! You need to be a \
                 root user")
         self._url = args.config
+        self._services = args.services
         self._args = args.args
 
     @property
@@ -79,6 +80,7 @@ class Cmd:
 
         parser1 = parser.add_parser(cls.name, help='setup %s' % name)
         parser1.add_argument('--config', help='Conf Store URL', type=str)
+        parser1.add_argument('--services', help='Cortx Services', default='all')
         cls._add_extended_args(parser1)
         parser1.add_argument('args', nargs='*', default=[], help='args')
         parser1.set_defaults(command=cls)
@@ -127,10 +129,11 @@ class InitCmd(Cmd):
 
     def __init__(self, args):
         super().__init__(args)
+        self.config_path = args.config
 
     def process(self):
         Utils.validate('init')
-        rc = Utils.init()
+        rc = Utils.init(self.config_path)
         return rc
 
 
@@ -145,12 +148,13 @@ class TestCmd(Cmd):
 
     def __init__(self, args):
         super().__init__(args)
+        self.config_path = args.config
         # Default test_plan is 'sanity'
         self.test_plan = args.plan
 
     def process(self):
         Utils.validate('test')
-        rc = Utils.test(self.test_plan)
+        rc = Utils.test(self.config_path, self.test_plan)
         return rc
 
 
@@ -160,10 +164,11 @@ class ResetCmd(Cmd):
 
     def __init__(self, args):
         super().__init__(args)
+        self.config_path = args.config
 
     def process(self):
         Utils.validate('reset')
-        rc = Utils.reset()
+        rc = Utils.reset(self.config_path)
         return rc
 
 
@@ -181,10 +186,25 @@ class CleanupCmd(Cmd):
         # hifen(-) in argparse is converted to underscore(_)
         # to make sure string is valid attrtibute
         self.pre_factory = args.pre_factory
+        self.config_path = args.config
 
     def process(self):
         Utils.validate('cleanup')
-        rc = Utils.cleanup(self.pre_factory)
+        rc = Utils.cleanup(self.pre_factory, self.config_path)
+        return rc
+
+
+class UpgradeCmd(Cmd):
+    """Upgrade Setup Cmd."""
+    name = 'upgrade'
+
+    def __init__(self, args: dict):
+        super().__init__(args)
+        self.config_path = args.config
+
+    def process(self):
+        Utils.validate('upgrade')
+        rc = Utils.upgrade(self.config_path)
         return rc
 
 
@@ -196,7 +216,7 @@ class PreUpgradeCmd(Cmd):
         super().__init__(args)
 
     def process(self):
-        Utils.validate('post_upgrade')
+        Utils.validate('pre_upgrade')
         rc = Utils.pre_upgrade(self.args[0])
         return rc
 
@@ -214,9 +234,21 @@ class PostUpgradeCmd(Cmd):
         return rc
 
 
-def main(argv: dict):
-    Log.init('utils_setup', '/var/log/cortx/utils', level='INFO',
-        backup_count=5, file_size_in_mb=5)
+def main():
+    from cortx.utils.conf_store import Conf
+    argv = sys.argv
+
+    # Get the log path
+    tmpl_file = argv[3]
+    Conf.load('cluster_config', tmpl_file)
+    log_dir = Conf.get('cluster_config', 'cortx>common>storage>log')
+    utils_log_path = os.path.join(log_dir, f'utils/{Conf.machine_id}')
+
+    # Get the log level
+    log_level = Conf.get('cluster_config', 'utils>log_level', 'INFO')
+
+    Log.init('utils_setup', utils_log_path, level=log_level, backup_count=5, \
+        file_size_in_mb=5)
     try:
         desc = "CORTX Utils Setup command"
         Log.info(f"Starting utils_setup {argv[1]} ")
@@ -236,4 +268,4 @@ def main(argv: dict):
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    sys.exit(main())
